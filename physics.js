@@ -36,7 +36,6 @@
     MAX_FLIGHT: 4,        // seconds; a ball is forced to stop after this long (safety net)
     GROW_RATE: 220,       // units per second a settled orb grows (about a third of a second)
     MAX_R: 120,           // an orb never grows past this
-    HIT_MIN_SPEED: 40,    // a touch slower than this does not cost a life
     AIM_LIMIT: 75 * Math.PI / 180,   // cannon sweeps from -75 to +75 degrees
     SWEEP_PERIOD: 4.4,    // seconds for a full left-right-left sweep (measured: ~1 s from centre to an end)
     MUZZLE: 75            // distance from the hub centre to where the ball waits and launches (measured)
@@ -226,14 +225,13 @@
       if (vn < 0) {
         b.vx -= (1 + C.ORB_BOUNCE) * vn * nx;
         b.vy -= (1 + C.ORB_BOUNCE) * vn * ny;
-        if (-vn > C.HIT_MIN_SPEED) {
-          o.lives -= 1;
-          sim.events.push({ type: 'hit', id: o.id, x: b.x, y: b.y, lives: o.lives });
-          if (o.lives <= 0) {
-            sim.events.push({ type: 'pop', id: o.id, x: o.x, y: o.y, r: o.r, owner: o.owner });
-            orbs.splice(i, 1);
-            i--;
-          }
+        // Every touch costs a life, however gentle.
+        o.lives -= 1;
+        sim.events.push({ type: 'hit', id: o.id, x: b.x, y: b.y, lives: o.lives });
+        if (o.lives <= 0) {
+          sim.events.push({ type: 'pop', id: o.id, x: o.x, y: o.y, r: o.r, owner: o.owner });
+          orbs.splice(i, 1);
+          i--;
         }
       }
     }
@@ -294,10 +292,8 @@
     if (max < C.BALL_R) max = C.BALL_R;   // never shrink
     sim.growMax = max;
 
-    // Growing into your own line loses the round. So does coming to rest
-    // without ever having left your own strip (the ball never got out).
-    var ownDist = sim.role === 'p1' ? dBot : dTop;
-    sim.growHitsOwnLine = ownDist <= max + 1e-9 || !b.armed;
+    // Growing into a line, yours or theirs, simply stops the growth. Only the
+    // ball in flight touching your own line loses the round.
   }
 
   function stepGrowing(sim) {
@@ -306,13 +302,7 @@
     if (g.r < sim.growMax) return true;
     g.r = sim.growMax;
     sim.phase = 'done';
-    if (sim.growHitsOwnLine) {
-      sim.outcome = 'lost';
-      sim.loser = sim.role;
-      sim.events.push({ type: 'lost', x: g.x, y: g.y, role: sim.role });
-    } else {
-      sim.outcome = 'settled';
-    }
+    sim.outcome = 'settled';
     return false;
   }
 
