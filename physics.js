@@ -293,7 +293,11 @@
     sim.growMax = max;
 
     // Growing into a line, yours or theirs, simply stops the growth. Only the
-    // ball in flight touching your own line loses the round.
+    // ball in flight touching your own line loses the round... with one
+    // exception: a ball that comes to rest without ever leaving your own
+    // strip has ended inside your zone, which counts as a loss too (otherwise
+    // an orb could sit on top of your cannon).
+    sim.stoppedInOwnStrip = !b.armed;
   }
 
   function stepGrowing(sim) {
@@ -302,7 +306,13 @@
     if (g.r < sim.growMax) return true;
     g.r = sim.growMax;
     sim.phase = 'done';
-    sim.outcome = 'settled';
+    if (sim.stoppedInOwnStrip) {
+      sim.outcome = 'lost';
+      sim.loser = sim.role;
+      sim.events.push({ type: 'lost', x: g.x, y: g.y, role: sim.role });
+    } else {
+      sim.outcome = 'settled';
+    }
     return false;
   }
 

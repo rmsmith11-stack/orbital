@@ -15,7 +15,11 @@
   var gridLayer = document.createElement('canvas');   // the bending grid, redrawn when orbs change
   var gridSig = '';
 
-  var COLORS = { 0: '#ffffff', 1: '#5ee7ff', 2: '#ff5fd2' };   // neutral, player 1, player 2
+  var COLORS = { 0: '#ffffff', 1: '#5ee7ff', 2: '#ff5fd2' };   // neutral, player 1, player 2 (lines, hubs, shots)
+  // Orbs take their colour from a palette by orb number, as in the original,
+  // not from who shot them. Both phones compute the same colour for an orb.
+  var ORB_PALETTE = ['#ff4b4b', '#2ee6c8', '#f5e642', '#b56bff', '#ff9f43', '#5ee7ff', '#ff5fd2', '#7cff6b'];
+  function orbColor(o) { return o.id === 0 ? '#ff5fd2' : ORB_PALETTE[(o.id - 1) % ORB_PALETTE.length]; }
   var ROLE_NUM = { p1: 1, p2: 2 };
   var HUD_H = 44;
   var BANNER_MS = 2600;
@@ -32,6 +36,10 @@
   var anim = null;          // { sim, t0, steps } while a shot is in the air / growing
   var disp = { orbs: [] };  // the orbs currently drawn
   var fx = [], trail = [], hitFlash = {};
+  // Sparkles: purely decorative, never part of the shared game record.
+  var particles = [], MAX_PARTICLES = 2000, lastDraw = 0;
+  var HUES = [];
+  for (var hi = 0; hi < 36; hi++) HUES.push('hsl(' + (hi * 10) + ',100%,68%)');
   var banner = null, holdUntil = 0;
   var flash = null;          // short "YOUR TURN" notice, does not block play
   var sweepStart = null, cannon = { p1: 0, p2: 0 };
@@ -413,6 +421,58 @@
     return s;
   }
 
+  // ---- sparkles -------------------------------------------------------
+  function addParticle(x, y, vx, vy, life, hue, white, size, now) {
+    if (particles.length >= MAX_PARTICLES) particles.shift();
+    particles.push({ x: x, y: y, vx: vx, vy: vy, born: now, life: life, hue: hue, white: white, size: size, tw: Math.random() * 6.28 });
+  }
+  function trailHue(now) { return ((now / 1400) * 36) % 36; }
+  // A sprinkle of sparkles along the ball's path since the last frame.
+  function emitTrail(x0, y0, x1, y1, speedUnits, now) {
+    var n = Math.max(2, Math.min(16, Math.round(speedUnits / 80)));
+    var h = trailHue(now);
+    for (var i = 0; i < n; i++) {
+      var t = (i + 1) / n, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
+      addParticle(x + (Math.random() - 0.5) * 16, y + (Math.random() - 0.5) * 16,
+        (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40,
+        1.2 + Math.random() * 1.0, (h + Math.random() * 4) % 36, Math.random() < 0.15, 2.2 + Math.random() * 2, now);
+    }
+  }
+  // A spray in all directions (bounces, hits, pops, losing).
+  function emitBurst(x, y, count, smin, smax, hue, now, whiteFrac, life) {
+    for (var i = 0; i < count; i++) {
+      var a = Math.random() * 6.2832, sp = smin + Math.random() * (smax - smin);
+      addParticle(x, y, Math.cos(a) * sp, Math.sin(a) * sp, (life || 0.7) * (0.6 + Math.random() * 0.8),
+        hue === null ? Math.random() * 36 : (hue + (Math.random() - 0.5) * 6 + 36) % 36, Math.random() < (whiteFrac || 0.25), 2 + Math.random() * 2, now);
+    }
+  }
+  // An expanding ring of sparkles when a ball settles and grows.
+  function emitRing(x, y, count, now) {
+    for (var i = 0; i < count; i++) {
+      var a = (i / count) * 6.2832, sp = 110 + Math.random() * 60;
+      addParticle(x, y, Math.cos(a) * sp, Math.sin(a) * sp, 0.8 + Math.random() * 0.4, Math.random() * 36, Math.random() < 0.3, 2.5, now);
+    }
+  }
+  function drawParticles(now) {
+    var dt = lastDraw ? Math.min(0.05, (now - lastDraw) / 1000) : 0;
+    var keep = 0;
+    for (var i = 0; i < particles.length; i++) {
+      var q = particles[i], age = (now - q.born) / 1000;
+      if (age >= q.life) continue;
+      q.x += q.vx * dt; q.y += q.vy * dt;
+      var slow = 1 - 2.2 * dt; q.vx *= slow; q.vy *= slow;
+      var k = 1 - age / q.life;
+      var twinkle = 0.65 + 0.35 * Math.sin(now / 45 + q.tw);
+      ctx.globalAlpha = k * twinkle;
+      ctx.fillStyle = q.white ? '#ffffff' : HUES[q.hue | 0];
+      var sz = q.size * (0.6 + 0.4 * k);
+      ctx.fillRect(q.x - sz / 2, q.y - sz / 2, sz, sz);
+      particles[keep++] = q;
+    }
+    particles.length = keep;
+    ctx.globalAlpha = 1;
+  }
+
   function drawStripsAndLines(now) {
     ['p1', 'p2'].forEach(function (role) {
       var p = P.PLAYERS[role], col = colorOf(role);
@@ -484,7 +544,7 @@
   function drawOrbs(now) {
     var orbs = disp.orbs;
     for (var i = 0; i < orbs.length; i++) {
-      var o = orbs[i], col = COLORS[o.owner] || COLORS[0];
+      var o = orbs[i], col = orbColor(o);
       ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
       ctx.fillStyle = rgba(col, 0.07); ctx.fill();
       var since = now - (hitFlash[o.id] || -1e9);
@@ -507,12 +567,12 @@
   function drawBall() {
     if (!anim || !anim.sim.ball) return;
     var b = anim.sim.ball, col = colorOf(anim.sim.role);
-    for (var i = 1; i < trail.length; i++) {
-      ctx.strokeStyle = rgba(col, 0.45 * i / trail.length);
-      ctx.lineWidth = C.BALL_R * 1.6 * i / trail.length;
-      ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(trail[i - 1].x, trail[i - 1].y); ctx.lineTo(trail[i].x, trail[i].y); ctx.stroke();
-    }
+    var halo = ctx.createRadialGradient(b.x, b.y, C.BALL_R * 0.5, b.x, b.y, C.BALL_R * 3.2);
+    halo.addColorStop(0, 'rgba(255,255,255,0.55)');
+    halo.addColorStop(0.4, rgba(col, 0.35));
+    halo.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(b.x, b.y, C.BALL_R * 3.2, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(b.x, b.y, C.BALL_R, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff'; ctx.fill();
     glow(ctx, col, 1.5, 0.5);
@@ -568,9 +628,11 @@
     drawScore();
     drawHubs();
     drawOrbs(now);
+    drawParticles(now);
     drawBall();
     drawFx(now);
     ctx.restore();
+    lastDraw = now;
     ctx.beginPath(); ctx.rect(0, 0, C.W, C.H);
     glow(ctx, '#9fdcff', 1.5, 0.25);
     drawFlash(now);
@@ -585,14 +647,20 @@
       if (e.type === 'hit') {
         hitFlash[e.id] = now;
         fx.push({ type: 'ring', x: e.x, y: e.y, r0: 6, r1: 24, color: '#ffffff', t0: now, dur: 260 });
+        emitBurst(e.x, e.y, 40, 60, 360, trailHue(now), now, 0.35, 0.8);
       } else if (e.type === 'pop') {
-        fx.push({ type: 'ring', x: e.x, y: e.y, r0: e.r, r1: e.r * 1.9, color: COLORS[e.owner] || COLORS[0], t0: now, dur: 520, width: 4 });
-        fx.push({ type: 'ring', x: e.x, y: e.y, r0: e.r * 0.4, r1: e.r * 1.3, color: '#ffffff', t0: now, dur: 380 });
+        fx.push({ type: 'ring', x: e.x, y: e.y, r0: e.r, r1: e.r * 2.2, color: orbColor(e), t0: now, dur: 700, width: 4 });
+        fx.push({ type: 'ring', x: e.x, y: e.y, r0: e.r * 0.4, r1: e.r * 1.4, color: '#ffffff', t0: now, dur: 420 });
+        emitBurst(e.x, e.y, 90, 40, 420, null, now, 0.3, 1.1);
       } else if (e.type === 'wall') {
         fx.push({ type: 'ring', x: e.x, y: e.y, r0: 4, r1: 16, color: '#ffffff', t0: now, dur: 220 });
+        emitBurst(e.x, e.y, 30, 50, 320, trailHue(now), now, 0.3, 0.7);
+      } else if (e.type === 'settle') {
+        emitRing(e.x, e.y, 36, now);
       } else if (e.type === 'lost') {
         fx.push({ type: 'ring', x: e.x, y: e.y, r0: 10, r1: 90, color: '#ff4d4d', t0: now, dur: 800, width: 4 });
         fx.push({ type: 'lineflash', role: e.role, t0: now, dur: 1200 });
+        emitBurst(e.x, e.y, 80, 60, 400, 0, now, 0.4, 1.0);
       }
     }
     ev.length = 0;
@@ -608,10 +676,9 @@
       }
       drainEvents(anim.sim, now);
       if (anim.sim.ball) {
-        trail.push({ x: anim.sim.ball.x, y: anim.sim.ball.y });
-        if (trail.length > 18) trail.shift();
-      } else {
-        trail = [];
+        var bb = anim.sim.ball, spd = Math.sqrt(bb.vx * bb.vx + bb.vy * bb.vy);
+        if (anim.last) emitTrail(anim.last.x, anim.last.y, bb.x, bb.y, spd, now);
+        anim.last = { x: bb.x, y: bb.y };
       }
       if (!running) finishAnimation(now);
     }
