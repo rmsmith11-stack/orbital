@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#070a12">
+<title>Orbital Online</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #070a12; color: #e6ebf5; font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; overflow: hidden; }
+  body { position: fixed; inset: 0; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; position: absolute; inset: 0; touch-action: none; }
+
+  #hud {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 2;
+    padding: calc(env(safe-area-inset-top, 0px) + 4px) 14px 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  #hud .mid { text-align: center; }
+  #roundLabel { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.55; }
+  #status { font-size: 14px; font-weight: 700; margin-top: 1px; }
+  .c1 { color: #5ee7ff; } .c2 { color: #ff5fd2; }
+
+  .panel {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(92vw, 380px); padding: 26px 22px; z-index: 5;
+    background: rgba(13, 18, 34, 0.96); border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); text-align: center;
+  }
+  .panel h1 { font-size: 30px; font-weight: 800; letter-spacing: 1px; margin-bottom: 6px; }
+  .panel h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .panel p { font-size: 15px; line-height: 1.4; opacity: 0.85; margin-bottom: 14px; }
+  .panel label { display: block; text-align: left; font-size: 13px; opacity: 0.8; margin: 8px 0 14px; }
+  .panel input {
+    display: block; width: 100%; margin-top: 6px; font-size: 18px; padding: 12px 14px;
+    border-radius: 12px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #fff; outline: none;
+  }
+  .panel button {
+    display: block; width: 100%; font-size: 17px; font-weight: 700; padding: 14px; margin-top: 10px;
+    border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.08); color: #fff; cursor: pointer;
+  }
+  .panel button.primary { background: #5ee7ff; color: #06202b; border-color: transparent; }
+  .panel button:active { transform: scale(0.98); }
+  .panel .note { font-size: 12px; opacity: 0.55; margin: 14px 0 0; }
+  .panel .link {
+    font-size: 13px; word-break: break-all; padding: 10px; border-radius: 10px;
+    background: rgba(255,255,255,0.06); border: 1px dashed rgba(255,255,255,0.2); margin-bottom: 6px;
+    -webkit-user-select: text; user-select: text;
+  }
+  .toast {
+    position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); transform: translateX(-50%);
+    background: #ff4d4d; color: #fff; padding: 12px 18px; border-radius: 12px; font-weight: 600; z-index: 9; max-width: 90vw; text-align: center;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="mid"><div id="roundLabel">Round 1 · first to 3</div><div id="status"></div></div>
+</div>
+
+<canvas id="game"></canvas>
+
+<div id="lobby" class="panel">
+  <h1>ORBITAL</h1>
+  <p>Take turns firing. Orbs bend your shots. Don't let your own ball drift back over your line.</p>
+  <label>Your name<input id="nameInput" maxlength="16" placeholder="Your name" autocomplete="off"></label>
+  <div id="joinBox" hidden>
+    <p>You've been invited to game <b id="joinCode"></b>.</p>
+    <button id="joinBtn" class="primary">Join game</button>
+  </div>
+  <div id="newBox">
+    <button id="newBtn" class="primary">Start an online game</button>
+    <button id="practiceBtn">Practice on this device</button>
+  </div>
+  <p class="note" id="netNote"></p>
+</div>
+
+<div id="waiting" class="panel" hidden>
+  <h2>Invite your friend</h2>
+  <p>Send this link. The game starts the moment it's opened.</p>
+  <div class="link" id="shareLink"></div>
+  <button id="shareBtn" class="primary">Share link</button>
+  <button id="copyBtn">Copy link</button>
+  <p class="note">Game code: <b id="codeLabel"></b></p>
+</div>
+
+<div id="over" class="panel" hidden>
+  <h2 id="overTitle"></h2>
+  <p id="overSub"></p>
+  <button id="againBtn" class="primary">Play again</button>
+</div>
+
+<div id="error" class="toast" hidden></div>
+
+<script src="physics.js"></script>
+<script src="firebase-config.js"></script>
+<script src="net.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
